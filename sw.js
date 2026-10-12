@@ -1,6 +1,6 @@
 /* Natário Advocacia — cache do app para abrir rápido (dados sempre vêm do servidor) */
-const VERSAO = "natario-v1";
-const ARQUIVOS = ["./", "index.html", "style.css", "config.js", "calc-logica.js", "app.js", "ferramentas.js", "importar.js",
+const VERSAO = "natario-v2";
+const ARQUIVOS = ["./", "index.html", "style.css", "config.js", "calc-logica.js", "app.js", "ferramentas.js", "importar.js", "documentos.js", "modelos/natario.docx", "modelos/fabio.docx",
   "logo.png", "logo-claro.png", "manifest.webmanifest", "icones/icon-192.png", "icones/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(ARQUIVOS))); self.skipWaiting(); });
 self.addEventListener("activate", (e) => {

@@ -286,3 +286,4 @@ dialog .pe-dialogo { display: flex; justify-content: flex-end; gap: 8px; flex-wr
 :root[data-theme="dark"] .logo-escuro { display: none; } :root[data-theme="dark"] .logo-claro { display: block; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo-escuro { display: none; } :root:not([data-theme="light"]) .logo-claro { display: block; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.aviso{background:color-mix(in srgb,var(--gold, #B0863A) 14%,transparent);border-left:3px solid var(--gold, #B0863A);padding:8px 12px;border-radius:6px;margin:8px 0}

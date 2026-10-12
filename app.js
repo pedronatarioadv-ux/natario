@@ -180,6 +180,15 @@ async function carregarApoio() {
   E.tipos = t.data || []; E.parceiros = p.data || [];
   E.cfg = Object.fromEntries((c.data || []).map((x) => [x.chave, x.valor]));
   E.token = E.cfg.token_pessoal || null;
+  window.NATARIO_TIPOS = E.tipos;
+}
+window.natarioDialogo = (html, op) => dialogo(html, op);
+window.natarioToast = (m, ms) => toast(m, ms);
+
+/* ---------------- abrir pasta do OneDrive no Mac (ajudante "Natário Pastas") ---------------- */
+function abrirPasta(rel) {
+  location.href = `natario://abrir?p=${encodeURIComponent(rel)}`;
+  setTimeout(() => { if (document.hasFocus()) toast("Se a pasta não abriu, instale o ajudante do Mac em Mais › Ajustes › Abrir pastas.", 6000); }, 2500);
 }
 const tipoPorId = (id) => E.tipos.find((t) => t.id === id);
 const chipTipo = (id) => { const t = tipoPorId(id); return t ? `<span class="chip"><i style="background:${esc(t.cor)}"></i>${esc(t.nome)}</span>` : ""; };
@@ -364,7 +373,7 @@ async function resolverEntrada(x) {
       if (error) return erro(error);
     }
     if (it.data && ["audiencia", "prazo", "reuniao"].includes(it.tipo)) {
-      await sb.from("compromissos").insert({ cliente_id: cid, processo_id: pid, tipo: it.tipo, titulo: it.titulo || x.texto.slice(0, 80), inicio: isoLocal(it.data, it.hora), dia_inteiro: !it.hora, local: it.local || null, observacoes: x.texto });
+      const { error: e1 } = await sb.from("compromissos").insert({ cliente_id: cid, processo_id: pid, tipo: it.tipo, titulo: it.titulo || x.texto.slice(0, 80), inicio: isoLocal(it.data, it.hora), dia_inteiro: !it.hora, local: it.local || null, observacoes: x.texto });
     }
     if (x.origem === "push" && it.numero && pid) {
       const { data: p } = await sb.from("processos").select("numero").eq("id", pid).single();
@@ -455,6 +464,8 @@ ROTAS.cliente = async (v, id, sub) => {
         <button class="btn" id="wa">${I.whats} WhatsApp</button>
         <a class="btn" href="#/cliente/${id}/editar">${I.editar} Editar</a>
         <button class="btn" id="qual">${I.copiar} Qualificação</button>
+        <button class="btn" id="docs">${I.doc} Documentos</button>
+        ${c.pasta ? `<button class="btn" id="pastaCli" title="${esc(c.pasta)}">${I.pasta} Abrir pasta</button>` : ""}
       </div></div>
 
     <details class="cartao" ${procs.length ? "" : "open"}><summary style="padding:14px 18px;cursor:pointer;font-weight:600">Dados pessoais</summary>
@@ -473,6 +484,8 @@ ROTAS.cliente = async (v, id, sub) => {
 
   $("#wa", v).onclick = () => abrirWhats(c, `Olá, ${primeiroNome(c.nome)}! Aqui é o Dr. Pedro, do Natário Advocacia.\n\n`);
   $("#qual", v).onclick = () => copiar(qualif());
+  $("#docs", v).onclick = () => window.abrirDocumentos(c, procs, procs.find((x) => x.id === st.proc) || null);
+  $("#pastaCli", v)?.addEventListener("click", () => abrirPasta(c.pasta));
   $("#novoProc", v).onclick = () => formProcesso(c, null);
   $("#verdoc", v)?.addEventListener("click", async () => {
     const { data, error } = await sb.storage.from("documentos").createSignedUrl(c.documento_path, 300);
@@ -494,11 +507,13 @@ ROTAS.cliente = async (v, id, sub) => {
             <div class="numero">${esc(p.numero ? fmtCNJ(p.numero) : "Sem número")}</div>
             ${(p.parceiros || []).length ? `<div class="parceria">Em parceria com ${esc(p.parceiros.join(", "))}</div>` : ""}</div>
           <div class="acoes">${p.numero || p.url_consulta ? `<button class="btn pq primario" id="consultar">${I.externo} Consultar no sistema${sis ? ` · ${SISTEMAS[sis].nome}` : ""}</button>` : ""}
+            ${p.pasta && p.pasta !== c.pasta ? `<button class="btn pq" id="pastaProc">${I.pasta} Pasta</button>` : ""}
             <button class="btn pq" id="edProc">${I.editar} Editar</button></div></div>` : `<div class="proc-cab"><div><div class="rotulo">Todos os processos</div><div class="numero">${procs.length} processos</div></div></div>`}
         <div class="subabas">${p ? `<button data-a="info">Informações gerais</button><button data-a="partes">Partes</button>` : ""}<button data-a="mov">Movimentações (${ms.length})</button><button data-a="agenda">Agenda (${ks.length})</button></div>
         <div id="aba"></div>`;
       $("#consultar", el)?.addEventListener("click", () => consultarNoSistema(p));
       $("#edProc", el)?.addEventListener("click", () => formProcesso(c, p));
+      $("#pastaProc", el)?.addEventListener("click", () => abrirPasta(p.pasta));
       $$(".subabas button", el).forEach((b) => (b.onclick = () => { st.aba = b.dataset.a; aba(); }));
       if (!p && ["info", "partes"].includes(st.aba)) st.aba = "mov";
     }
@@ -802,14 +817,16 @@ function colarAudiencias() {
       const pend = itens.map((x, i) => [x, i]).filter(([x]) => x.situacao === "pendente");
       const real = itens.map((x, i) => [x, i]).filter(([x]) => x.situacao === "realizada");
       const tab = (lista) => `<div class="tabela"><table><thead><tr><th></th><th>Data</th><th>Audiência</th><th>Cliente</th></tr></thead><tbody>${lista.map(([x, i]) => linha(x, i)).join("")}</tbody></table></div>`;
-      $("#previa", d).innerHTML = `<h3 style="margin-top:8px">Pendentes (${pend.length})</h3>${pend.length ? tab(pend) : `<p class="mudo">Nenhuma.</p>`}
+      const aviso = data.falhas ? `<p class="aviso">${data.falhas} de ${data.partes} parte(s) do bloco não puderam ser lidas. Grave estas e cole de novo só o trecho que faltou.</p>` : "";
+      if (!itens.length) { $("#previa", d).innerHTML = `${aviso}<p class="mudo">Não encontrei audiências com data neste texto. Confira se colou o bloco inteiro.</p>`; b.disabled = false; b.textContent = "Analisar"; return; }
+      $("#previa", d).innerHTML = aviso + `<h3 style="margin-top:8px">Pendentes (${pend.length})</h3>${pend.length ? tab(pend) : `<p class="mudo">Nenhuma.</p>`}
         <h3 style="margin-top:14px">Realizadas (${real.length})</h3>${real.length ? tab(real) : `<p class="mudo">Nenhuma.</p>`}`;
       b.dataset.etapa = "gravar"; b.textContent = `Gravar selecionadas`;
     } catch (err) { erro(err); b.textContent = "Analisar"; }
     b.disabled = false;
   };
   async function gravar() {
-    let n = 0;
+    let n = 0, falhou = 0;
     for (const x of $$(".sel", d).filter((x) => x.checked)) {
       const it = itens[Number(x.dataset.i)];
       let cid = it.cliente?.id || $(`.cs[data-i="${x.dataset.i}"]`, d)?.value || null;
@@ -817,10 +834,11 @@ function colarAudiencias() {
       const realizada = it.situacao === "realizada";
       await sb.from("compromissos").insert({ cliente_id: cid, processo_id: it.processo?.id || null, tipo: it.tipo || "audiencia", titulo: it.titulo || it.trecho?.slice(0, 120) || "Audiência",
         inicio: isoLocal(it.data, it.hora), dia_inteiro: !it.hora, local: it.local || null, observacoes: [it.trecho, it.observacao].filter(Boolean).join("\n"), concluido: realizada });
+      if (e1) { falhou++; console.error(e1); continue; }
       if (realizada && cid) await sb.from("movimentacoes").insert({ cliente_id: cid, processo_id: it.processo?.id || null, data: it.data, tipo: "audiencia", texto: [it.titulo, it.observacao].filter(Boolean).join(" — "), origem: "importacao" });
       n++;
     }
-    d.close(); toast(`${n} audiência(s) gravada(s)`); rota();
+    d.close(); toast(`${n} audiência(s) gravada(s)${falhou ? ` · ${falhou} com erro` : ""}`, falhou ? 6000 : 3200); rota();
   }
 }
 
@@ -903,6 +921,8 @@ ROTAS.ajustes = async (v) => {
   const urlCapturar = `${CFG.supabaseUrl}/functions/v1/capturar`;
   const tema = (() => { try { return localStorage.getItem("natario-tema") || ""; } catch { return ""; } })();
   v.innerHTML = `<div class="cabecalho"><div><div class="rotulo">Ajustes</div><h1>Configurações</h1></div></div>
+  <div class="secao"><header><h2>Abrir pastas no Mac</h2></header><div class="cartao" style="padding:18px">
+    <p class="mudo pequeno" style="margin:0 0 8px">O botão "Abrir pasta" do cliente abre a pasta dele no OneDrive do seu Mac. Para isso, instale uma vez o ajudante: no Finder, abra Documentos › Natario Advocacia › mac e dê dois cliques em <b>instalar-abrir-pastas.command</b>. Na primeira vez que usar o botão, o navegador pergunta se pode abrir o "Natário Pastas": marque "Sempre permitir".</p></div></div>
   <div class="secao"><header><h2>Integrações do iPhone</h2></header><div class="cartao" style="padding:18px;display:flex;flex-direction:column;gap:12px">
     <div><b>Agenda do iPhone</b><p class="mudo pequeno" style="margin:2px 0 8px">Assine uma vez: audiências e prazos aparecem sozinhos no app Calendário, com alerta 5 dias antes.</p>
       <div class="linha"><a class="btn primario pq" href="${esc(webcal)}">Assinar no iPhone</a><button class="btn pq" data-copy="${esc(urlAgenda)}">${I.copiar} Copiar endereço</button></div></div>
